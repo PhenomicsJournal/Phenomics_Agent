@@ -11,95 +11,109 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- 2. 高级高级感 CSS 定制 ---
+# --- 2. 高级感 CSS (玻璃拟态 & 深度动效) ---
 st.markdown("""
     <style>
-    /* 全局字体与背景 */
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap');
-    html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Noto+Sans+SC:wght@300;400;700&display=swap');
     
-    /* 隐藏默认元素 */
+    html, body, [class*="css"] { font-family: 'Inter', 'Noto Sans SC', sans-serif; }
+    
+    .stDeployButton {display:none;}
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
-    .stDeployButton {display:none;}
-    
+
     /* 玻璃拟态卡片 */
     .stInfo {
-        background: rgba(255, 255, 255, 0.7);
-        backdrop-filter: blur(10px);
-        border-radius: 15px;
-        border: 1px solid rgba(255, 255, 255, 0.3);
-        box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07);
-        padding: 25px;
-        transition: transform 0.3s ease;
+        background: rgba(255, 255, 255, 0.05);
+        backdrop-filter: blur(15px);
+        border-radius: 16px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        padding: 30px;
+        color: #1e293b;
+        box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
     }
-    
-    /* 按钮高级动画 */
+
+    /* 渐变按钮 */
     .stButton>button {
         width: 100%;
         border-radius: 12px;
-        background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+        background: linear-gradient(135deg, #0f172a 0%, #334155 100%);
         color: white;
         border: none;
-        padding: 12px 24px;
+        height: 50px;
         font-weight: 600;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
+        letter-spacing: 0.5px;
+        transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1);
     }
     .stButton>button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
-        background: linear-gradient(135deg, #1e40af 0%, #2563eb 100%);
+        transform: translateY(-3px);
+        box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+        background: linear-gradient(135deg, #1e293b 0%, #475569 100%);
     }
-    
+
     /* 标题动效 */
-    .main-title {
-        background: linear-gradient(90deg, #1e3a8a, #6366f1);
+    .title-text {
+        background: linear-gradient(90deg, #0f172a, #2563eb);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
+        font-size: 2.8rem;
         font-weight: 800;
-        font-size: 2.5rem;
-        margin-bottom: 1rem;
+        margin-bottom: 0.5rem;
     }
-    
-    /* 淡入动画 */
-    @keyframes fadeIn {
-        from { opacity: 0; transform: translateY(10px); }
-        to { opacity: 1; transform: translateY(0); }
+
+    /* 选项卡样式自定义 */
+    .stTabs [data-baseweb="tab-list"] { gap: 24px; }
+    .stTabs [data-baseweb="tab"] {
+        height: 50px;
+        white-space: pre;
+        font-weight: 600;
+        font-size: 1rem;
     }
-    .element-container { animation: fadeIn 0.5s ease-out; }
+
+    /* 全局淡入 */
+    .element-container { animation: fadeIn 0.8s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 3. 核心后端逻辑 ---
+# --- 3. 核心逻辑模块 ---
+
 def extract_text_from_pdf(file):
     try:
         stream = file.read()
         doc = fitz.open(stream=stream, filetype="pdf")
-        text = "".join([page.get_text() for page in doc])
-        return text
-    except Exception as e:
-        st.error(f"PDF Parsing Error: {e}")
+        return "".join([page.get_text() for page in doc])
+    except:
         return None
 
-def generate_social_post(client, content, platform):
-    # 账号配置
-    handles = {
-        "LinkedIn": "@phenomics-journal",
-        "Facebook": "@Journal Phenomics",
-        "X (Twitter)": "@Phenomics_J"
-    }
-    
-    # 平台特征描述
-    specs = {
-        "LinkedIn": "Professional, networking-focused, highly structured. (3-5 tags)",
-        "Facebook": "Community-focused, engaging, slightly more emojis. (3-5 tags)",
-        "X (Twitter)": "Concise, viral, aggressive hashtag usage (at least 10 relevant tags) for maximum reach."
-    }
+def generate_academic_news_cn(client, content):
+    """生成：科学网/知乎/公众号风格的长文"""
+    system_prompt = (
+        "你是一名顶尖的学术新闻编辑，擅长为《Phenomics》期刊撰写深度报道。"
+        "请基于提供的论文内容，严格按照以下结构生成中文报道（要求专业、权威、具有吸引力）：\n"
+        "1. 标题：Phenomics | [主要PI姓名]团队开发[简短技术/研究名称]\n"
+        "2. 文章速递：近日，[机构]的[PI姓名]团队在《Phenomics》发表题为“[英文标题]”的研究论文。\n"
+        "3. 研究背景：阐述该领域痛点及本研究的重要性。\n"
+        "4. 研究方法：简述实验设计与核心技术框架。\n"
+        "5. 研究结果：列出关键实验数据与结论。\n"
+        "6. 研究意义：该研究的临床/科学价值及推广前景。\n"
+        "7. Abstract：保留原文的核心摘要。\n"
+        "8. 作者简介：提取通讯作者与第一作者信息。"
+    )
+    response = client.chat.completions.create(
+        model="deepseek-chat",
+        messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": content}],
+        temperature=0.5
+    )
+    return response.choices[0].message.content
 
+def generate_social_post_en(client, content, platform):
+    """生成：LinkedIn/Facebook/X 风格的短文"""
+    handles = {"LinkedIn": "@phenomics-journal", "Facebook": "@Journal Phenomics", "X (Twitter)": "@Phenomics_J"}
+    
     system_instruction = (
-        "You are the Lead Editor for 'Phenomics' Social Media. "
-        "Strictly produce high-quality posts in this visual format:\n\n"
+        "You are a professional social media manager for 'Phenomics'. "
+        "Strictly follow this visual format:\n\n"
         "🚨 New Research on #[Topic]! 🧬\n\n"
         "[Punchy 1-sentence summary] 🌍 🔬\n\n"
         "Key Insights:\n"
@@ -112,109 +126,92 @@ def generate_social_post(client, content, platform):
         "📄 Full Study: [DOI URL]\n\n"
         "Connect with us: [Handle]"
     )
-
-    prompt = (
-        f"Context: {content[:8000]}\n\n"
-        f"Platform: {platform}\n"
-        f"Handle: {handles[platform]}\n"
-        f"Style: {specs[platform]}\n"
-        f"Task: Identify author, date, and DOI accurately. Use emojis and maintain the structure."
+    
+    spec = "For X/Twitter, use 10+ hashtags. For others, use 3-5." if platform == "X (Twitter)" else ""
+    prompt = f"Content: {content[:7000]}\nPlatform: {platform}\nHandle: {handles[platform]}\nRequirement: {spec}"
+    
+    response = client.chat.completions.create(
+        model="deepseek-chat",
+        messages=[{"role": "system", "content": system_instruction}, {"role": "user", "content": prompt}],
+        temperature=0.7
     )
+    return response.choices[0].message.content
 
-    try:
-        response = client.chat.completions.create(
-            model="deepseek-chat",
-            messages=[
-                {"role": "system", "content": system_instruction},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.7
-        )
-        return response.choices[0].message.content
-    except Exception as e:
-        return f"Generation failed: {str(e)}"
+# --- 4. UI 界面布局 ---
 
-# --- 4. UI 布局 ---
-
-# 侧边栏配置
 with st.sidebar:
-    st.image("https://img.icons8.com/fluency/96/dna-helix.png", width=60)
-    st.markdown("### Control Center")
+    st.markdown("### ⚙️ Engine Settings")
     api_key = st.text_input("DeepSeek API Key", type="password")
     st.divider()
-    st.caption("System Version: 5.0")
-    st.caption("Engine: DeepSeek-V3")
+    st.caption("Core Version: 5.0")
+    st.caption("Style: Academic/Social Hybrid")
 
-# 主界面
-st.markdown('<p class="main-title">Phenomics Portal</p>', unsafe_allow_html=True)
-st.markdown("##### Research Dissemination System")
+st.markdown('<p class="title-text">Phenomics Portal</p>', unsafe_allow_html=True)
+st.markdown("##### Phenomics 期刊全渠道成果发布系统")
 
-c1, c2 = st.columns([1, 1.4], gap="large")
+col_left, col_right = st.columns([1, 1.5], gap="large")
 
-with c1:
-    st.markdown("#### 📄 Content Source")
-    uploaded_file = st.file_uploader("Drop PDF here", type="pdf", label_visibility="collapsed")
-    manual_text = st.text_area("Or paste abstract below:", height=150, placeholder="Paste research text here...")
+with col_left:
+    st.markdown("#### 📄 论文输入")
+    uploaded_file = st.file_uploader("上传 PDF 原文", type="pdf", label_visibility="collapsed")
+    manual_input = st.text_area("或在此粘贴内容摘要:", height=200)
     
-    st.markdown("#### 📢 Target Platforms")
-    selected_platforms = st.multiselect(
-        "Select distribution channels",
-        ["LinkedIn", "Facebook", "X (Twitter)"],
-        default=["LinkedIn", "Facebook", "X (Twitter)"]
-    )
+    st.markdown("#### 🚀 生成选项")
+    do_cn = st.checkbox("生成中文深度报道 (公众号/科学网风格)", value=True)
+    do_en = st.checkbox("生成英文社群推文 (LinkedIn/FB/X)", value=True)
     
-    generate_btn = st.button("Generate Synchronized Content")
+    generate_btn = st.button("一键全渠道同步生成")
 
-with c2:
-    st.markdown("#### 📱 Multi-Channel Preview")
-    
+with col_right:
     if generate_btn:
         if not api_key:
-            st.warning("Please enter API Key in the sidebar.")
+            st.error("请先在侧边栏配置 API Key")
         else:
             client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
+            source_text = extract_text_from_pdf(uploaded_file) if uploaded_file else manual_input
             
-            # 文本提取逻辑
-            content = ""
-            if uploaded_file:
-                content = extract_text_from_pdf(uploaded_file)
+            if not source_text:
+                st.warning("请上传 PDF 或输入文字内容。")
             else:
-                content = manual_text
-            
-            if content:
-                results = {}
-                with st.status("🚀 Processing Research Intelligence...", expanded=True) as status:
-                    for p in selected_platforms:
-                        st.write(f"Crafting {p} copy...")
-                        results[p] = generate_social_post(client, content, p)
-                    status.update(label="✨ Content Synthesized!", state="complete", expanded=False)
-                
-                # 使用 Tabs 展示预览，极其高级
-                tabs = st.tabs(selected_platforms)
-                full_download = ""
-                for i, p in enumerate(selected_platforms):
-                    with tabs[i]:
-                        st.markdown(f"**{p} Content Preview**")
-                        st.info(results[p])
-                        full_download += f"--- {p} ---\n{results[p]}\n\n"
-                
-                st.download_button(
-                    label="📥 Download All Assets",
-                    data=full_download,
-                    file_name="Phenomics_Social_Pack.txt",
-                    mime="text/plain"
-                )
-            else:
-                st.error("No source content detected.")
-    else:
-        # 初始占位图
-        st.info("Upload a paper to see the AI-generated social media strategy.")
+                with st.status("正在进行多模态内容编排...", expanded=True) as status:
+                    # 中文生成
+                    if do_cn:
+                        st.write("撰写中文深度报道...")
+                        cn_result = generate_academic_news_cn(client, source_text)
+                        st.session_state.cn_result = cn_result
+                    
+                    # 英文生成
+                    if do_en:
+                        st.session_state.en_results = {}
+                        for p in ["LinkedIn", "Facebook", "X (Twitter)"]:
+                            st.write(f"正在同步 {p} 副本...")
+                            st.session_state.en_results[p] = generate_social_post_en(client, source_text, p)
+                    
+                    status.update(label="✨ 内容全部生成完毕!", state="complete", expanded=False)
 
-# 底部点缀
+                # 展示结果
+                tab_list = []
+                if do_cn: tab_list.append("🇨🇳 中文深度报道")
+                if do_en: tab_list.extend(["🔗 LinkedIn", "👥 Facebook", "🐦 X (Twitter)"])
+                
+                tabs = st.tabs(tab_list)
+                
+                idx = 0
+                if do_cn:
+                    with tabs[idx]:
+                        st.markdown("##### 微信公众号/科学网/知乎 专用排版")
+                        st.info(st.session_state.cn_result)
+                        st.download_button("下载中文稿件", st.session_state.cn_result, file_name="CN_Press_Release.txt")
+                    idx += 1
+                
+                if do_en:
+                    for platform in ["LinkedIn", "Facebook", "X (Twitter)"]:
+                        with tabs[idx]:
+                            st.markdown(f"##### {platform} 推广副本")
+                            st.code(st.session_state.en_results[platform], language="markdown")
+                            idx += 1
+    else:
+        st.info("系统就绪。请上传 PDF 论文原文，系统将自动提取 PI 姓名、研究背景及核心数据并完成全渠道排版。")
+
 st.markdown("---")
-st.markdown(
-    '<p style="text-align: center; color: #94a3b8; font-size: 0.8rem;">'
-    'Phenomics AI Distribution Hub | Version 5.0 | High-Fidelity Output'
-    '</p>', 
-    unsafe_allow_html=True
-)
+st.markdown('<p style="text-align: center; color: #64748b; font-size: 0.8rem;">Phenomics Intelligence System v5.0 | Multi-Channel Academic Publisher</p>', unsafe_allow_html=True)
