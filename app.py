@@ -1,6 +1,7 @@
 import streamlit as st
 from openai import OpenAI
 import fitz  # PyMuPDF
+import os
 import time
 
 # --- 1. 页面配置 ---
@@ -86,53 +87,14 @@ def extract_text_from_pdf(file):
     except:
         return None
 
-def generate_academic_news_cn(client, content):
-    """生成：科学网/知乎/公众号风格的长文"""
-    system_prompt = (
-        "你是一名顶尖的学术新闻编辑，擅长为《Phenomics》期刊撰写深度报道。"
-        "请基于提供的论文内容，严格按照以下结构生成中文报道（要求专业、权威、具有吸引力）：\n"
-        "1. 标题：Phenomics | [主要PI姓名]团队开发[简短技术/研究名称]\n"
-        "2. 文章速递：近日，[机构]的[PI姓名]团队在《Phenomics》发表题为“[英文标题]”的研究论文。\n"
-        "3. 研究背景：阐述该领域痛点及本研究的重要性。\n"
-        "4. 研究方法：简述实验设计与核心技术框架。\n"
-        "5. 研究结果：列出关键实验数据与结论。\n"
-        "6. 研究意义：该研究的临床/科学价值及推广前景。\n"
-        "7. Abstract：保留原文的核心摘要。\n"
-        "8. 作者简介：提取通讯作者与第一作者信息。"
-    )
+def generate_content(client, source_text, system_prompt):
+    """通用生成函数：使用指定的系统提示词和论文内容生成文本"""
     response = client.chat.completions.create(
         model="deepseek-chat",
-        messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": content}],
-        temperature=0.5
-    )
-    return response.choices[0].message.content
-
-def generate_social_post_en(client, content, platform):
-    """生成：LinkedIn/Facebook/X 风格的短文"""
-    handles = {"LinkedIn": "@phenomics-journal", "Facebook": "@Journal Phenomics", "X (Twitter)": "@Phenomics_J"}
-    
-    system_instruction = (
-        "You are a professional social media manager for 'Phenomics'. "
-        "Strictly follow this visual format:\n\n"
-        "🚨 New Research on #[Topic]! 🧬\n\n"
-        "[Punchy 1-sentence summary] 🌍 🔬\n\n"
-        "Key Insights:\n"
-        "✅ [Insight 1 with #[Tag]] 🌿\n"
-        "✅ [Insight 2 with #[Tag]] ⚡\n"
-        "✅ [Insight 3 with #[Tag]] 🧠\n"
-        "✅ [Insight 4 with #[Tag]] 🔬\n\n"
-        "Published by: [Author Name]\n"
-        "📅 Published on: [Date]\n"
-        "📄 Full Study: [DOI URL]\n\n"
-        "Connect with us: [Handle]"
-    )
-    
-    spec = "For X/Twitter, use 10+ hashtags. For others, use 3-5." if platform == "X (Twitter)" else ""
-    prompt = f"Content: {content[:7000]}\nPlatform: {platform}\nHandle: {handles[platform]}\nRequirement: {spec}"
-    
-    response = client.chat.completions.create(
-        model="deepseek-chat",
-        messages=[{"role": "system", "content": system_instruction}, {"role": "user", "content": prompt}],
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": source_text[:7000]}  # 截断长文本
+        ],
         temperature=0.7
     )
     return response.choices[0].message.content
@@ -143,8 +105,8 @@ with st.sidebar:
     st.markdown("### ⚙️ Engine Settings")
     api_key = st.text_input("DeepSeek API Key", type="password")
     st.divider()
-    st.caption("Core Version: 5.0")
-    st.caption("Style: Academic/Social Hybrid")
+    st.caption("Core Version: 5.1 (Dynamic Prompts)")
+    st.caption("Prompts folder: ./prompts/")
 
 st.markdown('<p class="title-text">Phenomics Portal</p>', unsafe_allow_html=True)
 st.markdown("##### Phenomics 期刊全渠道成果发布系统")
@@ -155,11 +117,22 @@ with col_left:
     st.markdown("#### 📄 论文输入")
     uploaded_file = st.file_uploader("上传 PDF 原文", type="pdf", label_visibility="collapsed")
     manual_input = st.text_area("或在此粘贴内容摘要:", height=200)
-    
+
+    # 动态读取 prompts 文件夹下的渠道文件
+    prompts_dir = "./prompts"
+    channel_files = []
+    channel_names = []
+    if os.path.exists(prompts_dir):
+        for f in os.listdir(prompts_dir):
+            if f.endswith(".txt"):
+                channel_files.append(f)
+                channel_names.append(os.path.splitext(f)[0])  # 去掉扩展名作为显示名称
+
     st.markdown("#### 🚀 生成选项")
-    do_cn = st.checkbox("生成中文深度报道 (公众号/科学网风格)", value=True)
-    do_en = st.checkbox("生成英文社群推文 (LinkedIn/FB/X)", value=True)
-    
+    selected_channels = {}
+    for name in channel_names:
+        selected_channels[name] = st.checkbox(f"生成 {name} 内容", value=True)
+
     generate_btn = st.button("一键全渠道同步生成")
 
 with col_right:
@@ -169,49 +142,47 @@ with col_right:
         else:
             client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
             source_text = extract_text_from_pdf(uploaded_file) if uploaded_file else manual_input
-            
+
             if not source_text:
                 st.warning("请上传 PDF 或输入文字内容。")
             else:
+                # 初始化结果存储
+                if "results" not in st.session_state:
+                    st.session_state.results = {}
+
                 with st.status("正在进行多模态内容编排...", expanded=True) as status:
-                    # 中文生成
-                    if do_cn:
-                        st.write("撰写中文深度报道...")
-                        cn_result = generate_academic_news_cn(client, source_text)
-                        st.session_state.cn_result = cn_result
-                    
-                    # 英文生成
-                    if do_en:
-                        st.session_state.en_results = {}
-                        for p in ["LinkedIn", "Facebook", "X (Twitter)"]:
-                            st.write(f"正在同步 {p} 副本...")
-                            st.session_state.en_results[p] = generate_social_post_en(client, source_text, p)
-                    
+                    for name in channel_names:
+                        if selected_channels.get(name, False):
+                            st.write(f"正在生成 {name} 内容...")
+                            # 读取对应提示词文件
+                            file_path = os.path.join(prompts_dir, f"{name}.txt")
+                            try:
+                                with open(file_path, "r", encoding="utf-8") as f:
+                                    system_prompt = f.read()
+                                result = generate_content(client, source_text, system_prompt)
+                                st.session_state.results[name] = result
+                            except Exception as e:
+                                st.error(f"读取或生成 {name} 失败: {e}")
+                                st.session_state.results[name] = f"错误: {e}"
                     status.update(label="✨ 内容全部生成完毕!", state="complete", expanded=False)
 
-                # 展示结果
-                tab_list = []
-                if do_cn: tab_list.append("🇨🇳 中文深度报道")
-                if do_en: tab_list.extend(["🔗 LinkedIn", "👥 Facebook", "🐦 X (Twitter)"])
-                
-                tabs = st.tabs(tab_list)
-                
-                idx = 0
-                if do_cn:
-                    with tabs[idx]:
-                        st.markdown("##### 微信公众号/科学网/知乎 专用排版")
-                        st.info(st.session_state.cn_result)
-                        st.download_button("下载中文稿件", st.session_state.cn_result, file_name="CN_Press_Release.txt")
-                    idx += 1
-                
-                if do_en:
-                    for platform in ["LinkedIn", "Facebook", "X (Twitter)"]:
-                        with tabs[idx]:
-                            st.markdown(f"##### {platform} 推广副本")
-                            st.code(st.session_state.en_results[platform], language="markdown")
-                            idx += 1
+                # 动态创建标签页显示结果
+                tabs = st.tabs([f"📄 {name}" for name in channel_names if selected_channels.get(name, False)])
+                tab_index = 0
+                for name in channel_names:
+                    if selected_channels.get(name, False):
+                        with tabs[tab_index]:
+                            st.markdown(f"##### {name} 内容")
+                            st.info(st.session_state.results.get(name, "生成失败"))
+                            # 提供下载按钮
+                            st.download_button(
+                                label=f"下载 {name} 稿件",
+                                data=st.session_state.results.get(name, ""),
+                                file_name=f"{name}_release.txt"
+                            )
+                        tab_index += 1
     else:
-        st.info("系统就绪。请上传 PDF 论文原文，系统将自动提取 PI 姓名、研究背景及核心数据并完成全渠道排版。")
+        st.info("系统就绪。请上传 PDF 论文原文，系统将自动提取信息并完成全渠道排版。")
 
 st.markdown("---")
-st.markdown('<p style="text-align: center; color: #64748b; font-size: 0.8rem;">Phenomics Intelligence System v5.0 | Multi-Channel Academic Publisher</p>', unsafe_allow_html=True)
+st.markdown('<p style="text-align: center; color: #64748b; font-size: 0.8rem;">Phenomics Intelligence System v5.1 | Dynamic Prompts</p>', unsafe_allow_html=True)
